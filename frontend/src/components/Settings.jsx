@@ -1,12 +1,27 @@
 import React, { useState } from 'react';
+import avatarAhFu from '../assets/avatar_ah_fu.png';
+import avatarTouya from '../assets/avatar_touya_akira.png';
+import avatarSai from '../assets/avatar_sai.png';
 
 const Settings = ({ onStartGame, theme, toggleTheme }) => {
     const [boardSize, setBoardSize] = useState(19);
     const [timeControl, setTimeControl] = useState(30); // minutes
     const [difficulty, setDifficulty] = useState('新手');
 
+    // Map difficulty to Avatar
+    const difficultyMap = {
+        '新手': { id: '新手', label: '新手 (阿福)', img: avatarAhFu },
+        '职业': { id: '职业', label: '职业 (塔矢亮)', img: avatarTouya },
+        '本因坊': { id: '本因坊', label: '本因坊 (佐为)', img: avatarSai }
+    };
+
     const handleStart = () => {
-        onStartGame({ boardSize, timeControl, difficulty });
+        onStartGame({
+            boardSize,
+            timeControl,
+            difficulty,
+            avatar: difficultyMap[difficulty].img
+        });
     };
 
     const isDark = theme === 'dark';
@@ -74,22 +89,22 @@ const Settings = ({ onStartGame, theme, toggleTheme }) => {
                 <div className="mb-10">
                     <label className={`block text-sm font-semibold mb-3 uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>棋力设定</label>
                     <div className="grid grid-cols-3 gap-3">
-                        {[
-                            { id: '新手', label: '新手' },
-                            { id: '职业', label: '职业' },
-                            { id: '本因坊', label: '本因坊' },
-                        ].map((diff) => (
+                        {Object.values(difficultyMap).map((diff) => (
                             <button
                                 key={diff.id}
                                 onClick={() => setDifficulty(diff.id)}
-                                className={`py-3 rounded-xl text-sm font-medium transition-all duration-200 border ${difficulty === diff.id
+                                className={`relative py-3 rounded-xl text-sm font-medium transition-all duration-200 border flex flex-col items-center gap-2 overflow-hidden ${difficulty === diff.id
                                     ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.3)]'
                                     : isDark
                                         ? 'bg-slate-700/50 border-slate-600 text-slate-400 hover:bg-slate-700 hover:border-slate-500'
                                         : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:border-slate-300'
                                     }`}
                             >
-                                {diff.label}
+                                <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 shadow-sm">
+                                    <img src={diff.img} alt={diff.label} className="w-full h-full object-cover" />
+                                </div>
+                                <span>{diff.label.split(' ')[1].replace(/[()]/g, '')}</span>
+                                <span className="text-[10px] opacity-70 uppercase tracking-widest">{diff.id}</span>
                             </button>
                         ))}
                     </div>

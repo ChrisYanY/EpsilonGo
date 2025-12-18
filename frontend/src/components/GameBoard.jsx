@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { checkCaptures } from '../gameLogic';
 
-const GameBoard = ({ settings, onBack }) => {
+const GameBoard = ({ settings, onBack, theme }) => {
     const { boardSize, timeControl, difficulty } = settings;
     const [board, setBoard] = useState([]);
     const [currentPlayer, setCurrentPlayer] = useState('black'); // 'black' (User) or 'white' (AI)
@@ -18,6 +18,9 @@ const GameBoard = ({ settings, onBack }) => {
 
     // Analysis Stats
     const [aiStats, setAiStats] = useState({ winRate: 0.5, lead: 0 });
+    const [winRateHistory, setWinRateHistory] = useState([0.5]);
+
+    const isDark = theme === 'dark';
 
     // Initialize board
     useEffect(() => {
@@ -32,6 +35,7 @@ const GameBoard = ({ settings, onBack }) => {
         setGameOver(false);
         setEndMessage("");
         setAiStats({ winRate: 0.5, lead: 0 });
+        setWinRateHistory([0.5]);
     }, [boardSize, timeControl]);
 
     // Timer Logic
@@ -42,7 +46,7 @@ const GameBoard = ({ settings, onBack }) => {
                 setBlackTime(prev => {
                     if (prev <= 0) {
                         setGameOver(true);
-                        setEndMessage("Time's up! AI Wins.");
+                        setEndMessage("时间到！AI 获胜。");
                         return 0;
                     }
                     return prev - 1;
@@ -51,7 +55,7 @@ const GameBoard = ({ settings, onBack }) => {
                 setWhiteTime(prev => {
                     if (prev <= 0) {
                         setGameOver(true);
-                        setEndMessage("Time's up! You Win.");
+                        setEndMessage("时间到！你赢了。");
                         return 0;
                     }
                     return prev - 1;
@@ -67,14 +71,12 @@ const GameBoard = ({ settings, onBack }) => {
         let sgf = `(;GM[1]FF[4]CA[UTF-8]AP[EpsilonGo]ST[2]\n`;
         sgf += `RU[Chinese]SZ[${boardSize}]KM[7.5]\n`;
         sgf += `PW[EpsilonGo AI (${difficulty})]PB[Human Player]\n`;
-        sgf += `DT[${date}]RE[${endMessage.includes("You Win") ? "B+R" : "W+R"}]\n`; // Simple result guess
+        sgf += `DT[${date}]RE[${endMessage.includes("你赢了") ? "B+R" : "W+R"}]\n`;
 
         const colMap = "abcdefghijklmnopqrs".split("");
 
         history.forEach(move => {
             const c = colMap[move.col];
-            // SGF coordinates start from top-left, but row 0 is 'a'.
-            // Wait, standard SGF uses 'aa' for top-left.
             const r = colMap[move.row];
             const color = move.player === 'black' ? 'B' : 'W';
             sgf += `;${color}[${c}${r}]`;
@@ -95,6 +97,13 @@ const GameBoard = ({ settings, onBack }) => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    };
+
+    const handleResign = () => {
+        if (window.confirm("确定要认输吗？")) {
+            setGameOver(true);
+            setEndMessage("你认输了，AI 获胜。");
+        }
     };
 
     // Format time helper
@@ -167,10 +176,11 @@ const GameBoard = ({ settings, onBack }) => {
                         winRate: data.win_rate,
                         lead: data.lead
                     });
+                    setWinRateHistory(prev => [...prev, data.win_rate]);
 
                     if (data.resign) {
                         setGameOver(true);
-                        setEndMessage("AI Resigns. You Win!");
+                        setEndMessage("AI 认输，你赢了！");
                         return;
                     }
 
@@ -197,6 +207,7 @@ const GameBoard = ({ settings, onBack }) => {
         if (currentPlayer !== 'black' || isAiThinking) return;
         if (board[row][col] !== null) return;
         executeMove(row, col, 'black');
+        setWinRateHistory(prev => [...prev, prev[prev.length - 1]]);
     };
 
     // Star points
@@ -214,29 +225,67 @@ const GameBoard = ({ settings, onBack }) => {
     const starPoints = getStarPoints(boardSize);
     const isStarPoint = (r, c) => starPoints.some(([sr, sc]) => sr === r && sc === c);
 
+    // Win Rate Chart Logic
+    const renderWinRateChart = () => {
+        const data = winRateHistory;
+        if (data.length < 2) return null;
+
+        const width = 200;
+        const height = 40;
+        const stepX = width / (data.length - 1);
+
+        const points = data.map((rate, i) => {
+            const x = i * stepX;
+            const y = height - (rate * height);
+            return `${x},${y}`;
+        }).join(' ');
+
+        return (
+            <svg width="100%" height={height} className="overflow-visible" preserveAspectRatio="none">
+                {/* Baseline 50% */}
+                <line x1="0" y1={height / 2} x2="100%" y2={height / 2} stroke={isDark ? "#475569" : "#cbd5e1"} strokeDasharray="4 2" strokeWidth="1" />
+
+                <polyline
+                    points={points}
+                    fill="none"
+                    stroke={isDark ? "#34d399" : "#10b981"}
+                    strokeWidth="2"
+                    vectorEffect="non-scaling-stroke"
+                />
+                {/* Last Point Dot */}
+                <circle
+                    cx={data.length > 1 ? (data.length - 1) * stepX : 0}
+                    cy={height - (data[data.length - 1] * height)}
+                    r="3"
+                    fill={isDark ? "#34d399" : "#10b981"}
+                />
+            </svg>
+        );
+    };
+
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-none relative">
+        <div className={`flex flex-col items-center justify-center min-h-screen font-sans selection:bg-none relative transition-colors duration-300 ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
 
             {/* Game Over Modal */}
             {gameOver && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
-                    <div className="bg-slate-800 p-8 rounded-2xl border border-slate-600 shadow-2xl text-center max-w-md w-full animate-in fade-in zoom-in duration-300">
-                        <h2 className="text-4xl font-bold text-white mb-2 tracking-tight">Game Over</h2>
-                        <p className="text-xl text-cyan-400 font-medium mb-8">{endMessage}</p>
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-all">
+                    <div className={`p-8 rounded-2xl border shadow-2xl text-center max-w-md w-full animate-in fade-in zoom-in duration-300 ${isDark ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`}>
+                        <h2 className={`text-4xl font-bold mb-2 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>对局结束</h2>
+                        <p className="text-xl text-cyan-500 font-medium mb-8">{endMessage}</p>
 
-                        <div className="bg-slate-700/50 rounded-xl p-4 mb-6 text-left space-y-2">
-                            <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 border-b border-slate-600 pb-1">Final Stats</h3>
+                        <div className={`rounded-xl p-4 mb-6 text-left space-y-2 ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                            <h3 className={`text-xs font-bold uppercase mb-2 border-b pb-1 ${isDark ? 'text-slate-400 border-slate-600' : 'text-slate-500 border-slate-300'}`}>终局数据</h3>
                             <div className="flex justify-between">
-                                <span className="text-slate-300">Total Moves</span>
-                                <span className="text-white font-mono">{history.length}</span>
+                                <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>总手数</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{history.length}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-300">AI Win Rate</span>
-                                <span className="text-white font-mono">{(aiStats.winRate * 100).toFixed(1)}%</span>
+                                <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>AI 胜率</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{(aiStats.winRate * 100).toFixed(1)}%</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-300">Final Lead Est.</span>
-                                <span className={`font-mono ${aiStats.lead > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>预估目数</span>
+                                <span className={`font-mono ${aiStats.lead >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                                     {aiStats.lead > 0 ? '+' : ''}{aiStats.lead.toFixed(1)}
                                 </span>
                             </div>
@@ -250,13 +299,13 @@ const GameBoard = ({ settings, onBack }) => {
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                                 </svg>
-                                Save SGF
+                                保存棋谱
                             </button>
                             <button
                                 onClick={onBack}
-                                className="py-3 bg-slate-600 hover:bg-slate-500 rounded-xl text-white font-bold transition-colors"
+                                className={`py-3 rounded-xl text-white font-bold transition-colors ${isDark ? 'bg-slate-600 hover:bg-slate-500' : 'bg-slate-400 hover:bg-slate-500'}`}
                             >
-                                Main Menu
+                                返回菜单
                             </button>
                         </div>
                     </div>
@@ -264,25 +313,23 @@ const GameBoard = ({ settings, onBack }) => {
             )}
 
             {/* Analysis Panel */}
-            <div className="absolute top-4 left-4 bg-slate-800/80 backdrop-blur p-4 rounded-xl border border-slate-600 shadow-xl w-64 hidden md:block">
-                <h3 className="text-slate-400 text-xs font-bold uppercase mb-2">AI Analysis</h3>
+            <div className={`absolute top-4 left-4 backdrop-blur p-4 rounded-xl border shadow-xl w-64 hidden md:block transition-colors ${isDark ? 'bg-slate-800/80 border-slate-600' : 'bg-white/80 border-slate-200'}`}>
+                <h3 className={`text-xs font-bold uppercase mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>AI 形势分析</h3>
                 <div className="space-y-3">
                     <div>
                         <div className="flex justify-between text-sm mb-1">
-                            <span className="text-slate-300">Win Rate (White)</span>
-                            <span className="text-white font-mono font-bold">{(aiStats.winRate * 100).toFixed(1)}%</span>
+                            <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>白方胜率</span>
+                            <span className={`font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{(aiStats.winRate * 100).toFixed(1)}%</span>
                         </div>
-                        <div className="h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-500"
-                                style={{ width: `${aiStats.winRate * 100}%` }}
-                            ></div>
+                        {/* Win Rate Chart */}
+                        <div className={`mb-2 rounded border-b ${isDark ? 'border-slate-700' : 'border-slate-200'} pb-1`}>
+                            {renderWinRateChart()}
                         </div>
                     </div>
                     <div>
                         <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">Est. Lead</span>
-                            <span className={`font-mono font-bold ${aiStats.lead >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>预估目数</span>
+                            <span className={`font-mono font-bold ${aiStats.lead >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                                 {aiStats.lead > 0 ? '+' : ''}{aiStats.lead.toFixed(1)}
                             </span>
                         </div>
@@ -296,26 +343,35 @@ const GameBoard = ({ settings, onBack }) => {
                         EpsilonGo
                     </h1>
                     <div className="flex items-center gap-2 mt-1">
-                        <span className="text-slate-400 text-sm">vs {settings.difficulty} AI</span>
-                        {isAiThinking && <span className="text-xs text-cyan-400 animate-pulse">Thinking...</span>}
+                        <span className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>vs {settings.difficulty} AI</span>
+                        {isAiThinking && <span className="text-xs text-cyan-500 animate-pulse">思考中...</span>}
                     </div>
                 </div>
                 <div className="text-right">
-                    <div className={`text-2xl font-bold mb-1 transition-colors duration-300 ${currentPlayer === 'black' ? 'text-slate-900 bg-slate-200 shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-slate-200 bg-slate-800 border border-slate-600'} px-4 py-1 rounded-lg`}>
-                        {currentPlayer === 'black' ? 'Your Turn' : 'AI Turn'}
+                    <div className={`text-2xl font-bold mb-1 transition-colors duration-300 ${currentPlayer === 'black'
+                            ? (isDark ? 'text-slate-900 bg-slate-200 shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-white bg-slate-900 shadow-xl')
+                            : (isDark ? 'text-slate-200 bg-slate-800 border border-slate-600' : 'text-slate-600 bg-white border border-slate-200')
+                        } px-4 py-1 rounded-lg`}>
+                        {currentPlayer === 'black' ? '黑方落子' : '白方落子'}
                     </div>
                     {/* Timer Display */}
                     <div className="flex justify-end gap-4 text-sm font-mono mt-1">
-                        <div className={`px-2 rounded ${currentPlayer === 'black' ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>
-                            You: {formatTime(blackTime)}
+                        <div className={`px-2 rounded ${currentPlayer === 'black'
+                                ? (isDark ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-900')
+                                : 'text-slate-500'
+                            }`}>
+                            你: {formatTime(blackTime)}
                         </div>
-                        <div className={`px-2 rounded ${currentPlayer === 'white' ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>
+                        <div className={`px-2 rounded ${currentPlayer === 'white'
+                                ? (isDark ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-900')
+                                : 'text-slate-500'
+                            }`}>
                             AI: {formatTime(whiteTime)}
                         </div>
                     </div>
                     <div className="text-xs text-slate-500 flex justify-end gap-3 mt-1">
-                        <span>Captures: <span className="text-emerald-400 font-bold">{prisoners.black}</span></span>
-                        <span>Lost: <span className="text-red-400 font-bold">{prisoners.white}</span></span>
+                        <span>提子: <span className="text-emerald-500 font-bold">{prisoners.black}</span></span>
+                        <span>被提: <span className="text-red-500 font-bold">{prisoners.white}</span></span>
                     </div>
                 </div>
             </div>
@@ -374,8 +430,7 @@ const GameBoard = ({ settings, onBack }) => {
 
                                             {/* Last Move Highlight */}
                                             {isLastMove(r, c) && (
-                                                <div className={`absolute inset-0 rounded-full border-2 ${cell === 'black' ? 'border-white/50' : 'border-black/50'
-                                                    } animate-pulse`}></div>
+                                                <div className="absolute inset-0 rounded-full border-2 border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)] animate-pulse"></div>
                                             )}
                                         </div>
                                     )}
@@ -390,11 +445,16 @@ const GameBoard = ({ settings, onBack }) => {
             </div>
 
             <div className="mt-8 flex gap-4">
-                <button onClick={onBack} className="px-6 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">
-                    Quit Game
+                <button
+                    onClick={handleResign}
+                    className={`px-6 py-2 rounded-lg transition-colors ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-600 hover:bg-slate-100 shadow'}`}
+                >
+                    认输
                 </button>
-                <button className="px-6 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">
-                    Pass
+                <button
+                    className={`px-6 py-2 rounded-lg transition-colors ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-600 hover:bg-slate-100 shadow'}`}
+                >
+                    停一手
                 </button>
             </div>
         </div>

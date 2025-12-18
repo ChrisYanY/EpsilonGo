@@ -4,6 +4,7 @@ import GameBoard from './components/GameBoard';
 
 function App() {
   const [gameSettings, setGameSettings] = useState(null);
+  const [theme, setTheme] = useState('dark');
 
   const handleStartGame = (settings) => {
     setGameSettings(settings);
@@ -13,12 +14,16 @@ function App() {
     setGameSettings(null);
   };
 
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
   return (
     <>
       {gameSettings ? (
-        <GameBoard settings={gameSettings} onBack={handleBack} />
+        <GameBoard settings={gameSettings} onBack={handleBack} theme={theme} />
       ) : (
-        <Settings onStartGame={handleStartGame} />
+        <Settings onStartGame={handleStartGame} theme={theme} toggleTheme={toggleTheme} />
       )}
     </>
   );

@@ -45,7 +45,7 @@ const GameBoard = ({ settings, onBack, theme }) => {
 
     // Timer
     useEffect(() => {
-        if (gameOver) return;
+        if (gameOver || !timeControl) return; // No timer if timeControl is null
         const timer = setInterval(() => {
             if (currentPlayer === 'black') {
                 setBlackTime(prev => {
@@ -68,7 +68,7 @@ const GameBoard = ({ settings, onBack, theme }) => {
             }
         }, 1000);
         return () => clearInterval(timer);
-    }, [currentPlayer, gameOver]);
+    }, [currentPlayer, gameOver, timeControl]);
 
     // Show Commentary
     const showCommentary = (text, type) => {
@@ -80,43 +80,78 @@ const GameBoard = ({ settings, onBack, theme }) => {
     };
 
     // Evaluate Move Quality based on Win Rate Delta
-    const evaluateMove = (prevWhiteWinRate, currentWhiteWinRate) => {
+    const evaluateMove = (prevWhiteWinRate, currentWhiteWinRate, userMove, prevOpponentMove, currentBoard) => {
         // White Win Rate DROP means User (Black) GAIN
         const delta = prevWhiteWinRate - currentWhiteWinRate;
 
-        // AI Perspective Win Rate:
-        // If AI went from 0.6 -> 0.4, Delta is +0.2 (User gained 20%).
-        // If AI went from 0.4 -> 0.6, Delta is -0.2 (User lost 20%).
+        // Helpers
+        const isTenuki = () => {
+            if (!prevOpponentMove) return false;
+            // Manhattan distance > 10 implies playing away from the local area
+            const dist = Math.abs(userMove.row - prevOpponentMove.row) + Math.abs(userMove.col - prevOpponentMove.col);
+            return dist > 10;
+        };
 
-        if (delta > 0.20) return { text: "神之一手！", type: "good" };
-        if (delta > 0.05) return { text: "妙手！", type: "good" };
-        if (delta < -0.20) return { text: "勺子！", type: "bad" };
-        if (delta < -0.05) return { text: "俗手！", type: "bad" };
+        const isContact = () => {
+            const { row, col } = userMove;
+            const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+            for (let [dr, dc] of dirs) {
+                const nr = row + dr, nc = col + dc;
+                if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize) {
+                    if (currentBoard[nr][nc] === 'white') return true;
+                }
+            }
+            return false;
+        };
+
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+        console.log("Delta:", delta, "Tenuki:", isTenuki(), "Contact:", isContact());
+
+        if (delta > 0.15) return { text: pick(["神之一手！", "绝妙的一手！", "惊天地泣鬼神！"]), type: "good" };
+
+        // Priority for Tenuki/Contact with lower threshold
+        if (delta > 0.01) {
+            if (isTenuki()) return { text: pick(["脱先争胜！", "大局观绝佳！", "灵活的转身！"]), type: "good" };
+            if (isContact()) return { text: pick(["好断！", "强硬的反击！", "犀利的手段！"]), type: "good" };
+        }
+
+        if (delta > 0.04) return { text: pick(["妙手！", "好棋！", "精妙绝伦！", "漂亮！"]), type: "good" };
+        if (delta > 0.01) return { text: pick(["稳健！", "厚实！", "这一手不错", "冷静！"]), type: "good" };
+
+        if (delta < -0.20) return { text: pick(["雪崩！", "这棋完了...", "惨案！"]), type: "bad" };
+        if (delta < -0.05) return { text: pick(["俗手！", "随手！", "哎呀..."]), type: "bad" };
 
         return null;
     };
 
     // Execute Move
     const executeMove = useCallback((row, col, player) => {
-        setBoard(prevBoard => {
-            const tempBoard = prevBoard.map(r => [...r]);
-            tempBoard[row][col] = player;
-            const { newBoard, captured } = checkCaptures(tempBoard, row, col, player);
+        // Create new board state
+        const tempBoard = board.map(r => [...r]);
+        tempBoard[row][col] = player;
+        const { newBoard, captured } = checkCaptures(tempBoard, row, col, player);
 
-            if (captured === -1) return prevBoard;
+        if (captured === -1) return; // Invalid move (suicide)
 
-            if (captured > 0) {
-                setPrisoners(prev => ({
-                    ...prev,
-                    [player]: prev[player] + captured
-                }));
-            }
-            return newBoard;
-        });
+        // Update Board
+        setBoard(newBoard);
 
-        setHistory(prev => [...prev, { row, col, player }]);
+        // Update Prisoners
+        if (captured > 0) {
+            setPrisoners(prev => ({
+                ...prev,
+                [player]: prev[player] + captured
+            }));
+        }
+
+        // Update History
+        setHistory(prev => [...prev, { row, col, player, captured }]);
+
+        // Switch Player
         setCurrentPlayer(prev => prev === 'black' ? 'white' : 'black');
-    }, []);
+    }, [board]); // Depend on board so we always have fresh state
+
 
     // AI Turn Handler & Stats Update
     useEffect(() => {
@@ -156,9 +191,20 @@ const GameBoard = ({ settings, onBack, theme }) => {
                     setWinRateHistory(prev => [...prev, userWinRate]);
 
                     // Evaluate User's previous move (which caused this state)
+                    // Evaluate User's previous move
                     if (history.length > 0) {
-                        const comment = evaluateMove(prevAiWinRate, currentAiWinRate);
-                        if (comment) showCommentary(comment.text, comment.type);
+                        const userMove = history[history.length - 1];
+                        const prevOpponentMove = history.length > 1 ? history[history.length - 2] : null;
+
+                        // Priority Check for Captures
+                        if (userMove.captured && userMove.captured > 0) {
+                            const params = userMove.captured > 1 ? ["提吃大龙！", "收获颇丰！"] : ["提子不错！", "好棋！"];
+                            const text = params[Math.floor(Math.random() * params.length)];
+                            showCommentary(text, "good");
+                        } else {
+                            const comment = evaluateMove(prevAiWinRate, currentAiWinRate, userMove, prevOpponentMove, board);
+                            if (comment) showCommentary(comment.text, comment.type);
+                        }
                     }
 
                     if (data.resign) {
@@ -233,6 +279,7 @@ const GameBoard = ({ settings, onBack, theme }) => {
         }
     };
     const formatTime = (seconds) => {
+        if (!timeControl) return "∞";
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -391,7 +438,22 @@ const GameBoard = ({ settings, onBack, theme }) => {
                                     {cell && (
                                         <div className={`relative w-[90%] h-[90%] rounded-full shadow-md transition-transform duration-200 flex items-center justify-center ${cell === 'black' ? 'bg-gradient-to-br from-slate-800 to-black scale-100' : 'bg-gradient-to-br from-white to-slate-200 scale-100'}`}>
                                             <span className={`text-[9px] sm:text-xs font-bold leading-none ${cell === 'black' ? 'text-white/70' : 'text-black/70'}`}>{getMoveNumber(r, c)}</span>
-                                            {isLastMove(r, c) && <div className="absolute inset-0 rounded-full border-2 border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)] animate-pulse"></div>}
+                                            {isLastMove(r, c) && (
+                                                <div className="absolute -inset-1 z-20 pointer-events-none">
+                                                    <svg viewBox="0 0 100 100" className="w-full h-full animate-pulse drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]">
+                                                        <defs>
+                                                            <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                                <stop offset="0%" stopColor="#c084fc" /> {/* Purple */}
+                                                                <stop offset="50%" stopColor="#f472b6" /> {/* Pink */}
+                                                                <stop offset="100%" stopColor="#fbbf24" /> {/* Yellow */}
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <circle cx="50" cy="50" r="46" stroke="url(#grad1)" strokeWidth="6" fill="none" />
+                                                    </svg>
+                                                    {/* Inner pure white ring for sharpness */}
+                                                    <div className="absolute inset-0 rounded-full border border-white/40 opacity-50"></div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     {!cell && !isAiThinking && currentPlayer === 'black' && hover?.r === r && hover?.c === c && <div className={`w-[90%] h-[90%] rounded-full opacity-50 bg-black`}></div>}

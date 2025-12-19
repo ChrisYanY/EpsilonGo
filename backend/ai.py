@@ -3,25 +3,33 @@ import math
 from game_logic import resolve_captures, is_suicide
 
 def estimate_score_diff(board, prisoners):
-    # Returns (black_stones - white_stones) + (black_captured - white_captured)
-    # Positive = Black winning, Negative = White winning
-    # This is a VERY rough heuristic (Area scoring is much harder)
+    black_score = 0
+    white_score = 0
     
-    black_stones = 0
-    white_stones = 0
-    
-    for row in board:
-        for cell in row:
-            if cell == 'black':
-                black_stones += 1
-            elif cell == 'white':
-                white_stones += 1
+    # Weights for 9x9 (Center > Corner/Edge)
+    weights = [
+        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.2, 1.4, 1.4, 1.4, 1.4, 1.4, 1.2, 1.0],
+        [1.0, 1.4, 2.0, 2.0, 2.0, 2.0, 2.0, 1.4, 1.0],
+        [1.0, 1.4, 2.0, 3.0, 3.0, 3.0, 2.0, 1.4, 1.0],
+        [1.0, 1.4, 2.0, 3.0, 4.0, 3.0, 2.0, 1.4, 1.0],
+        [1.0, 1.4, 2.0, 3.0, 3.0, 3.0, 2.0, 1.4, 1.0],
+        [1.0, 1.4, 2.0, 2.0, 2.0, 2.0, 2.0, 1.4, 1.0],
+        [1.0, 1.2, 1.4, 1.4, 1.4, 1.4, 1.4, 1.2, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    ]
+
+    for r in range(len(board)):
+        for c in range(len(board[r])):
+            w = weights[r][c] if r < 9 and c < 9 else 1.0
+            if board[r][c] == 'black':
+                black_score += w
+            elif board[r][c] == 'white':
+                white_score += w
                 
-    # Prisoner heuristic: Each prisoner is roughly 1 point (territory + removed stone)
-    # In Chinese rules it's just area, but this approximates advantage.
-    
-    black_score = black_stones + prisoners.get('black', 0)
-    white_score = white_stones + prisoners.get('white', 0)
+    # Add prisoners (flat 1.0 value usually)
+    black_score += prisoners.get('black', 0)
+    white_score += prisoners.get('white', 0)
     
     return black_score - white_score
 

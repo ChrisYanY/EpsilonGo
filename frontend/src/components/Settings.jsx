@@ -68,9 +68,9 @@ const Settings = ({ onStartGame, theme, toggleTheme }) => {
                 <div className="mb-6">
                     <label className={`block text-sm font-semibold mb-3 uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>用时设置</label>
                     <div className="grid grid-cols-4 gap-3">
-                        {[5, 30, 60, 180].map((time) => (
+                        {[5, 30, 60, 180, null].map((time) => (
                             <button
-                                key={time}
+                                key={time || 'unlimited'}
                                 onClick={() => setTimeControl(time)}
                                 className={`py-3 rounded-xl text-sm font-medium transition-all duration-200 border ${timeControl === time
                                     ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
@@ -79,7 +79,7 @@ const Settings = ({ onStartGame, theme, toggleTheme }) => {
                                         : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:border-slate-300'
                                     }`}
                             >
-                                {time >= 60 ? `${time / 60}小时` : `${time}分钟`}
+                                {time === null ? "无时限" : time >= 60 ? `${time / 60}小时` : `${time}分钟`}
                             </button>
                         ))}
                     </div>
